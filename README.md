@@ -1,5 +1,21 @@
 ---
 title: Hotel Robot Openenv
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
+---
+title: Hotel Robot Openenv
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
+---
+title: Hotel Robot Openenv
 emoji: robot
 colorFrom: blue
 colorTo: green
@@ -218,4 +234,6 @@ Scores achieved by the rule-based agent (no LLM required):
 ## 📜 License
 
 MIT
+
+
 

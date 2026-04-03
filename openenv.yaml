@@ -1,0 +1,83 @@
+# openenv.yaml
+# OpenEnv configuration file for Hotel Robot Delivery Environment
+
+name: hotel-robot-openenv
+version: "1.0.0"
+description: >
+  A reinforcement learning environment where a hotel delivery robot
+  navigates floors and rooms to complete delivery tasks efficiently.
+
+environment:
+  entry_point: env.hotel_env:HotelEnv
+  actions:
+    - up
+    - down
+    - next_room
+    - prev_room
+    - deliver
+    - finish
+  observation:
+    current_floor:
+      type: int
+      description: Robot's current floor number
+    current_room:
+      type: int
+      description: Robot's current room number
+    target_floor:
+      type: int
+      description: Target delivery floor
+    target_room:
+      type: int
+      description: Target delivery room
+    delivered:
+      type: bool
+      description: Whether the item has been delivered
+    steps:
+      type: int
+      description: Number of steps taken so far
+
+tasks:
+  - name: easy
+    description: Deliver item on the same floor to a nearby room
+    entry_point: env.tasks:get_task
+    args:
+      task_name: easy
+    grader: env.grader:grade
+    max_steps: 20
+
+  - name: medium
+    description: Deliver item to a different floor and room
+    entry_point: env.tasks:get_task
+    args:
+      task_name: medium
+    grader: env.grader:grade
+    max_steps: 40
+
+  - name: hard
+    description: Deliver item across many floors with a tight step limit
+    entry_point: env.tasks:get_task
+    args:
+      task_name: hard
+    grader: env.grader:grade
+    max_steps: 25
+
+agent:
+  entry_point: inference:main
+  inference_script: inference.py
+
+reward:
+  min: -2.0
+  max: 5.0
+  description: >
+    Step penalty of -0.1 each move. Bonuses for reaching correct floor (+1.0),
+    correct room (+2.0), delivering (+3.0), and finishing (+5.0).
+    Penalty for wrong delivery (-2.0).
+
+metadata:
+  author: hotel-robot-team
+  tags:
+    - navigation
+    - delivery
+    - robotics
+    - real-world
+  license: MIT

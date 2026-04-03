@@ -1,3 +1,12 @@
+---
+title: Hotel Robot Openenv
+emoji: ??
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # 🏨 Hotel Robot Delivery Environment
 
 An OpenEnv reinforcement learning environment where a hotel delivery robot navigates floors and rooms to complete delivery tasks efficiently.

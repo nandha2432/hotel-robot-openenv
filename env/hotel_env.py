@@ -1,5 +1,6 @@
 # hotel_env.py
-# Hotel Robot Delivery Environment with Guest Rating System
+# Hotel Robot Delivery Environment
+# Features: Guest Rating System + Battery Management
 
 from tasks import get_task, list_tasks
 
@@ -8,17 +9,20 @@ class HotelEnv:
     """
     Hotel Robot Delivery Environment
 
-    The robot starts at a given floor and room.
-    It must navigate to the target floor and room, deliver the item, then finish.
-    After delivery, the guest gives a star rating (1-5) based on delivery speed.
+    The robot must navigate to the correct floor and room and deliver the item.
+    It must also manage its battery — if battery hits 0 the episode ends in failure.
+
+    Charging station is always at Floor 1, Room 100.
+    Robot must go there and use 'recharge' action to refill battery.
 
     Actions:
-        up          -> move up one floor
-        down        -> move down one floor
-        next_room   -> move to next room number
-        prev_room   -> move to previous room number
-        deliver     -> deliver item if at correct location
-        finish      -> finish task after delivery
+        up          -> move up one floor       (costs 3 battery)
+        down        -> move down one floor     (costs 3 battery)
+        next_room   -> move to next room       (costs 1 battery)
+        prev_room   -> move to prev room       (costs 1 battery)
+        deliver     -> deliver item            (costs 0 battery)
+        finish      -> finish task             (costs 0 battery)
+        recharge    -> recharge battery        (must be at Floor 1 Room 100)
 
     State:
         current_floor   -> robot's current floor
@@ -26,16 +30,25 @@ class HotelEnv:
         target_floor    -> destination floor
         target_room     -> destination room
         delivered       -> whether item has been delivered
-        guest_rating    -> star rating from guest (0 = not yet rated, 1-5 after delivery)
-        steps           -> number of steps taken so far
+        guest_rating    -> star rating 0-5 from guest after delivery
+        battery         -> current battery level (0-100)
+        charging        -> whether robot is currently at charging station
+        steps           -> steps taken
     """
 
-    VALID_ACTIONS = ["up", "down", "next_room", "prev_room", "deliver", "finish"]
+    VALID_ACTIONS = ["up", "down", "next_room", "prev_room", "deliver", "finish", "recharge"]
 
     MIN_FLOOR = 1
     MAX_FLOOR = 10
     MIN_ROOM  = 100
     MAX_ROOM  = 599
+
+    CHARGE_FLOOR = 1
+    CHARGE_ROOM  = 100
+
+    BATTERY_START    = 100
+    BATTERY_UP_DOWN  = 3    # cost per floor move
+    BATTERY_ROOM     = 1    # cost per room move
 
     def __init__(self, task_name: str = "easy"):
         self.task      = get_task(task_name)
@@ -46,7 +59,9 @@ class HotelEnv:
         self.target_floor  = None
         self.target_room   = None
         self.delivered     = False
-        self.guest_rating  = 0       # 0 = not yet rated
+        self.guest_rating  = 0
+        self.battery       = self.BATTERY_START
+        self.charging      = False
         self.steps         = 0
         self.done          = False
 
@@ -60,37 +75,23 @@ class HotelEnv:
         self.target_room   = self.task["target_room"]
         self.delivered     = False
         self.guest_rating  = 0
+        self.battery       = self.BATTERY_START
+        self.charging      = False
         self.steps         = 0
         self.done          = False
         return self.state()
 
     # ------------------------------------------------------------------
-    # Guest rating logic
+    # Guest rating
     # ------------------------------------------------------------------
     def _calculate_guest_rating(self) -> int:
-        """
-        Guest rates 1-5 stars based on how fast the delivery was.
-        Compares steps used vs max steps allowed.
-
-        5 stars -> used less than 30% of max steps  (very fast)
-        4 stars -> used less than 50% of max steps  (fast)
-        3 stars -> used less than 70% of max steps  (average)
-        2 stars -> used less than 90% of max steps  (slow)
-        1 star  -> used 90% or more of max steps    (very slow)
-        """
-        max_steps  = self.task["max_steps"]
-        ratio      = self.steps / max_steps
-
-        if ratio < 0.30:
-            return 5
-        elif ratio < 0.50:
-            return 4
-        elif ratio < 0.70:
-            return 3
-        elif ratio < 0.90:
-            return 2
-        else:
-            return 1
+        max_steps = self.task["max_steps"]
+        ratio     = self.steps / max_steps
+        if ratio < 0.30:   return 5
+        elif ratio < 0.50: return 4
+        elif ratio < 0.70: return 3
+        elif ratio < 0.90: return 2
+        else:              return 1
 
     # ------------------------------------------------------------------
     # step(action)
@@ -106,12 +107,22 @@ class HotelEnv:
         info   = {}
 
         # Step penalty
-        reward    -= 0.1
+        reward     -= 0.1
         self.steps += 1
 
+        # Update charging status
+        self.charging = (
+            self.current_floor == self.CHARGE_FLOOR and
+            self.current_room  == self.CHARGE_ROOM
+        )
+
+        # ------------------------------------------------------------------
+        # Handle actions
+        # ------------------------------------------------------------------
         if action == "up":
             if self.current_floor < self.MAX_FLOOR:
                 self.current_floor += 1
+                self.battery       -= self.BATTERY_UP_DOWN
                 reward += 0.5 if self.current_floor <= self.target_floor else -0.5
             else:
                 info["message"] = "Already at top floor."
@@ -119,6 +130,7 @@ class HotelEnv:
         elif action == "down":
             if self.current_floor > self.MIN_FLOOR:
                 self.current_floor -= 1
+                self.battery       -= self.BATTERY_UP_DOWN
                 reward += 0.5 if self.current_floor >= self.target_floor else -0.5
             else:
                 info["message"] = "Already at ground floor."
@@ -126,6 +138,7 @@ class HotelEnv:
         elif action == "next_room":
             if self.current_room < self.MAX_ROOM:
                 self.current_room += 1
+                self.battery      -= self.BATTERY_ROOM
                 reward += 0.2 if self.current_room <= self.target_room else -0.2
             else:
                 info["message"] = "Already at max room."
@@ -133,25 +146,46 @@ class HotelEnv:
         elif action == "prev_room":
             if self.current_room > self.MIN_ROOM:
                 self.current_room -= 1
+                self.battery      -= self.BATTERY_ROOM
                 reward += 0.2 if self.current_room >= self.target_room else -0.2
             else:
                 info["message"] = "Already at min room."
+
+        elif action == "recharge":
+            if self.charging:
+                if self.battery < 100:
+                    if self.battery < 30:
+                        # Smart recharge — battery was low, good decision
+                        reward += 1.0
+                        info["message"] = f"Smart recharge! Battery was low ({self.battery}%). Refilled to 100%."
+                    elif self.battery > 50:
+                        # Wasteful recharge — battery was fine
+                        reward -= 1.0
+                        info["message"] = f"Unnecessary recharge. Battery was {self.battery}% — wasted time."
+                    else:
+                        info["message"] = f"Recharging. Battery refilled to 100%."
+                    self.battery = 100
+                else:
+                    reward -= 0.5
+                    info["message"] = "Battery already full. Wasted a step."
+            else:
+                reward -= 1.0
+                info["message"] = (
+                    f"Not at charging station! "
+                    f"Charging station is at Floor {self.CHARGE_FLOOR} Room {self.CHARGE_ROOM}."
+                )
 
         elif action == "deliver":
             if self.current_floor == self.target_floor and self.current_room == self.target_room:
                 if not self.delivered:
                     self.delivered    = True
                     self.guest_rating = self._calculate_guest_rating()
-                    reward           += 3.0
-
-                    # Bonus reward based on guest rating
-                    rating_bonus = (self.guest_rating / 5.0) * 2.0
-                    reward      += rating_bonus
-
-                    info["message"] = (
-                        f"Item delivered! Guest gives {self.guest_rating} star"
+                    rating_bonus      = (self.guest_rating / 5.0) * 2.0
+                    reward           += 3.0 + rating_bonus
+                    info["message"]   = (
+                        f"Delivered! Guest gives {self.guest_rating} star"
                         f"{'s' if self.guest_rating > 1 else ''}! "
-                        f"Rating bonus: +{rating_bonus:.1f}"
+                        f"Battery remaining: {self.battery}%."
                     )
                 else:
                     info["message"] = "Already delivered."
@@ -159,27 +193,36 @@ class HotelEnv:
                 reward -= 2.0
                 info["message"] = (
                     f"Wrong location! At Floor {self.current_floor} "
-                    f"Room {self.current_room}, need Floor {self.target_floor} "
-                    f"Room {self.target_room}."
+                    f"Room {self.current_room}, need Floor "
+                    f"{self.target_floor} Room {self.target_room}."
                 )
 
         elif action == "finish":
             if self.delivered:
-                reward    += 5.0
-                self.done  = True
+                reward   += 5.0
+                self.done = True
                 info["message"] = (
-                    f"Task complete! Final guest rating: "
-                    f"{self.guest_rating} star{'s' if self.guest_rating > 1 else ''}."
+                    f"Task complete! Rating: {self.guest_rating} stars. "
+                    f"Battery remaining: {self.battery}%."
                 )
             else:
                 reward -= 1.0
                 info["message"] = "Cannot finish — item not yet delivered."
 
-        # Bonus for being on correct floor/room
+        # Bonus for correct floor/room
         if self.current_floor == self.target_floor:
             reward += 1.0
         if self.current_room == self.target_room:
             reward += 2.0
+
+        # ------------------------------------------------------------------
+        # Battery death check
+        # ------------------------------------------------------------------
+        if self.battery <= 0:
+            self.battery = 0
+            self.done    = True
+            reward      -= 5.0
+            info["message"] = "Battery died! Robot stopped. Delivery failed."
 
         # Step limit check
         if self.steps >= self.task["max_steps"] and not self.done:
@@ -199,6 +242,8 @@ class HotelEnv:
             "target_room":   self.target_room,
             "delivered":     self.delivered,
             "guest_rating":  self.guest_rating,
+            "battery":       self.battery,
+            "charging":      self.charging,
             "steps":         self.steps,
         }
 
@@ -211,29 +256,40 @@ class HotelEnv:
 # Quick test
 # ------------------------------------------------------------------
 if __name__ == "__main__":
-    print("=== Testing HotelEnv with Guest Rating ===\n")
+    print("=== Testing HotelEnv with Battery System ===\n")
 
     for task_name in ["easy", "medium", "hard"]:
         print(f"--- Task: {task_name} ---")
         env   = HotelEnv(task_name=task_name)
         state = env.reset()
-        print(f"Initial state: {state}")
+        print(f"Initial: Floor {state['current_floor']} Room {state['current_room']} | "
+              f"Target: Floor {state['target_floor']} Room {state['target_room']} | "
+              f"Battery: {state['battery']}%")
 
-        for step in range(50):
+        for _ in range(50):
             s  = env.state()
-            cf, cr = s["current_floor"], s["current_room"]
-            tf, tr = s["target_floor"],  s["target_room"]
+            cf, cr    = s["current_floor"], s["current_room"]
+            tf, tr    = s["target_floor"],  s["target_room"]
+            battery   = s["battery"]
+            delivered = s["delivered"]
 
-            if s["delivered"]:        action = "finish"
-            elif cf < tf:             action = "up"
-            elif cf > tf:             action = "down"
-            elif cr < tr:             action = "next_room"
-            elif cr > tr:             action = "prev_room"
-            else:                     action = "deliver"
+            # Battery low — go recharge first
+            if battery < 20 and not delivered:
+                if cf > 1:              action = "down"
+                elif cr > 100:          action = "prev_room"
+                else:                   action = "recharge"
+            elif delivered:             action = "finish"
+            elif cf < tf:               action = "up"
+            elif cf > tf:               action = "down"
+            elif cr < tr:               action = "next_room"
+            elif cr > tr:               action = "prev_room"
+            else:                       action = "deliver"
 
             state, reward, done, info = env.step(action)
-            print(f"  {action:12s} | Reward: {reward:+.2f} | Rating: {state['guest_rating']} | {info.get('message','')}")
+            print(f"  {action:12s} | Reward: {reward:+.2f} | "
+                  f"Battery: {state['battery']:3d}% | "
+                  f"Rating: {state['guest_rating']} | "
+                  f"{info.get('message', '')}")
             if done:
                 break
-
-        print(f"  Final state: {env.state()}\n")
+        print()

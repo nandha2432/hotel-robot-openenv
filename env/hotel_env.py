@@ -7,6 +7,39 @@
 
 from tasks import get_task, list_tasks
 
+from typing import Literal
+from pydantic import BaseModel
+
+
+# ------------------------------------------------------------------
+# Typed Pydantic models — required by OpenEnv spec
+# ------------------------------------------------------------------
+
+class HotelObservation(BaseModel):
+    current_floor: int
+    current_room:  int
+    target_floor:  int
+    target_room:   int
+    delivered:     bool
+    guest_rating:  int
+    guest_mood:    Literal["happy", "neutral", "annoyed", "angry", "furious"]
+    battery:       int
+    charging:      bool
+    steps:         int
+
+
+class HotelAction(BaseModel):
+    action: Literal["up", "down", "next_room", "prev_room", "deliver", "finish", "recharge"]
+
+
+class HotelReward(BaseModel):
+    value:   float
+    done:    bool
+    success: bool
+
+
+
+
 
 class HotelEnv:
     """

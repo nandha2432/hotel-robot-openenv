@@ -4,183 +4,163 @@ colorFrom: blue
 colorTo: green
 sdk: docker
 pinned: false
+tags:
+  - openenv
+  - reinforcement-learning
+  - robotics
+  - real-world
 ---
 
----
-title: Hotel Robot Openenv
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
----
+# Hotel Robot Delivery Environment
 
----
-title: Hotel Robot Openenv
-emoji: robot
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
----
-
----
-title: Hotel Robot Openenv
-emoji: ??
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
----
-
-# 🏨 Hotel Robot Delivery Environment
-
-An OpenEnv reinforcement learning environment where a hotel delivery robot navigates floors and rooms to complete delivery tasks efficiently.
+An OpenEnv reinforcement learning environment where a hotel delivery robot must navigate floors and rooms, manage its battery, and race against an increasingly angry guest to complete deliveries.
 
 ---
 
-## 📌 Environment Description
+## Environment Description
 
-A robot operates inside a multi-floor hotel building. It must navigate to the correct floor and room, deliver an item, and finish the task — all within a limited number of steps.
+A robot operates inside a multi-floor hotel. It must navigate to the correct floor and room and deliver an item — all while managing three competing constraints:
 
-This environment simulates a real-world task: autonomous delivery robots are increasingly used in hotels, hospitals, and warehouses. Training agents in this environment develops navigation and sequential decision-making skills directly applicable to real robotic systems.
+1. **Guest Rating** — guest gives 1-5 stars based on delivery speed
+2. **Battery Management** — robot must recharge at Floor 1 Room 100 or it dies mid-delivery
+3. **Angry Guest System** — guest mood degrades every step and cancels the order if too slow
 
----
-
-## 🎮 Action Space
-
-| Action      | Description                                      |
-|-------------|--------------------------------------------------|
-| `up`        | Move up one floor                                |
-| `down`      | Move down one floor                              |
-| `next_room` | Increase room number by 1                        |
-| `prev_room` | Decrease room number by 1                        |
-| `deliver`   | Deliver item (only works at correct floor + room)|
-| `finish`    | Finish episode (only works after delivering)     |
+This makes it a genuine multi-constraint RL problem, not a simple navigation task.
 
 ---
 
-## 👁️ Observation Space
+## Action Space
 
-| Field           | Type | Description                        |
-|-----------------|------|------------------------------------|
-| `current_floor` | int  | Robot's current floor              |
-| `current_room`  | int  | Robot's current room number        |
-| `target_floor`  | int  | Target delivery floor              |
-| `target_room`   | int  | Target delivery room number        |
-| `delivered`     | bool | Whether the item has been delivered|
-| `steps`         | int  | Number of steps taken so far       |
-
-**Example observation:**
-```json
-{
-  "current_floor": 1,
-  "current_room": 101,
-  "target_floor": 3,
-  "target_room": 305,
-  "delivered": false,
-  "steps": 0
-}
-```
+| Action      | Description                                           | Battery Cost |
+|-------------|-------------------------------------------------------|--------------|
+| `up`        | Move up one floor                                     | -10          |
+| `down`      | Move down one floor                                   | -10          |
+| `next_room` | Increase room number by 1                             | -3           |
+| `prev_room` | Decrease room number by 1                             | -3           |
+| `deliver`   | Deliver item (only at correct floor AND room)         | 0            |
+| `finish`    | End task (only after delivering)                      | 0            |
+| `recharge`  | Refill battery to 100% (only at Floor 1, Room 100)   | 0            |
 
 ---
 
-## 🏆 Reward Function
+## Observation Space
 
-| Event                              | Reward |
-|------------------------------------|--------|
-| Every step taken                   |  -0.1  |
-| Moving closer to target floor      |  +0.5  |
-| Moving away from target floor      |  -0.5  |
-| Being on correct floor (each step) |  +1.0  |
-| Being on correct room (each step)  |  +2.0  |
-| Delivering at correct location     |  +3.0  |
-| Wrong delivery attempt             |  -2.0  |
-| Finishing after delivery           |  +5.0  |
-
-The reward function provides dense signal throughout the episode — not just at the end. This guides the agent to navigate efficiently and penalises wasted steps.
-
----
-
-## 📋 Tasks
-
-| Task     | Start              | Target             | Max Steps | Difficulty                        |
-|----------|--------------------|--------------------|-----------|-----------------------------------|
-| `easy`   | Floor 1, Room 101  | Floor 1, Room 103  | 20        | Same floor, 2 rooms away          |
-| `medium` | Floor 1, Room 101  | Floor 3, Room 305  | 40        | Different floor, different room   |
-| `hard`   | Floor 2, Room 210  | Floor 5, Room 512  | 25        | 3 floors up, many rooms, tight limit |
+| Field           | Type | Description                                      |
+|-----------------|------|--------------------------------------------------|
+| `current_floor` | int  | Robot's current floor                            |
+| `current_room`  | int  | Robot's current room number                      |
+| `target_floor`  | int  | Target delivery floor                            |
+| `target_room`   | int  | Target delivery room number                      |
+| `delivered`     | bool | Whether the item has been delivered              |
+| `guest_rating`  | int  | Star rating 0-5 (set after delivery)             |
+| `guest_mood`    | str  | happy / neutral / annoyed / angry / furious      |
+| `battery`       | int  | Battery level 0-100                              |
+| `charging`      | bool | Whether robot is at charging station             |
+| `steps`         | int  | Number of steps taken so far                     |
 
 ---
 
-## 📊 Grader
+## Guest Mood System
 
-Each task is scored between **0.0 and 1.0**:
-
-| Milestone             | Score |
-|-----------------------|-------|
-| Reached correct floor |  +0.3 |
-| Reached correct room  |  +0.3 |
-| Delivered item        |  +0.4 |
-| **Max total**         |  **1.0** |
+| Steps     | Mood      | Reward Multiplier | Effect                          |
+|-----------|-----------|-------------------|---------------------------------|
+| 0 - 10    | Happy     | 1.0x              | Full rewards                    |
+| 11 - 20   | Neutral   | 0.8x              | Slightly reduced rewards        |
+| 21 - 30   | Annoyed   | 0.5x              | Half rewards                    |
+| 31 - 40   | Angry     | 0.2x              | Minimal rewards                 |
+| 41+       | Furious   | 0.0x              | ORDER CANCELLED, -10 penalty    |
 
 ---
 
-## 🚀 Setup & Usage
+## Reward Function
 
-### 1. Clone the repo
-```bash
-git clone https://huggingface.co/spaces/YOUR_USERNAME/hotel-robot-openenv
-cd hotel-robot-openenv
-```
+| Event                              | Reward                        |
+|------------------------------------|-------------------------------|
+| Every step taken                   | -0.1                          |
+| Moving toward correct floor        | +0.5 x mood multiplier        |
+| Being on correct floor             | +1.0 x mood multiplier        |
+| Being on correct room              | +2.0 x mood multiplier        |
+| Smart recharge (battery < 30%)     | +1.0 x mood multiplier        |
+| Unnecessary recharge (battery > 50%)| -1.0                         |
+| Delivering at correct location     | +3.0 + rating bonus x mood    |
+| Finishing after delivery           | +5.0 x mood multiplier        |
+| Wrong delivery attempt             | -2.0                          |
+| Battery dies                       | -5.0                          |
+| Order cancelled (furious guest)    | -10.0                         |
 
-### 2. Install dependencies
+---
+
+## Tasks
+
+| Task     | Start             | Target            | Battery | Max Steps | Challenge                              |
+|----------|-------------------|-------------------|---------|-----------|----------------------------------------|
+| `easy`   | Floor 1, Room 101 | Floor 1, Room 103 | 100%    | 20        | Simple nav, guest stays happy          |
+| `medium` | Floor 1, Room 101 | Floor 3, Room 106 | 100%    | 30        | Multi-floor, battery survives          |
+| `hard`   | Floor 1, Room 101 | Floor 5, Room 115 | 80%     | 60        | Must recharge or dies, guest gets mad  |
+
+---
+
+## Grader Scoring
+
+| Milestone                  | Score              |
+|----------------------------|--------------------|
+| Reached correct floor      | +0.05              |
+| Reached correct room       | +0.05              |
+| Delivered                  | +0.20              |
+| Guest rating (1-5 stars)   | (rating/5) x 0.40  |
+| Mood bonus at delivery     | up to +0.20        |
+| Battery remaining          | (battery/100) x 0.10|
+| **Max total**              | **1.0**            |
+
+---
+
+## Baseline Scores
+
+| Task     | Score | Steps | Guest Mood | Stars |
+|----------|-------|-------|------------|-------|
+| `easy`   | 0.99  | 4     | Happy      | 5     |
+| `medium` | 0.97  | 9     | Happy      | 5     |
+| `hard`   | 0.74  | 23    | Annoyed    | 4     |
+
+---
+
+## Setup & Usage
+
+### Install
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Run the server locally
+### Run server locally
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 7860
 ```
 
-### 4. Test the endpoints
+### Test endpoints
 ```bash
-# Reset environment
 curl -X POST http://localhost:7860/reset \
   -H "Content-Type: application/json" \
   -d '{"task_name": "easy"}'
 
-# Take a step
 curl -X POST http://localhost:7860/step \
   -H "Content-Type: application/json" \
   -d '{"action": "next_room", "task_name": "easy"}'
-
-# Check current state
-curl http://localhost:7860/state?task_name=easy
-
-# List all tasks
-curl http://localhost:7860/tasks
 ```
 
-### 5. Run the inference agent
+### Run inference agent
 ```bash
-export HF_TOKEN=your_token_here
+export HF_TOKEN=your_token
 export API_BASE_URL=https://router.huggingface.co/v1
 export MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
-
 python inference.py
 ```
 
 ---
 
-## 🐳 Docker
+## Docker
 
-### Build
 ```bash
 docker build -t hotel-robot-openenv .
-```
-
-### Run
-```bash
 docker run -p 7860:7860 \
   -e HF_TOKEN=your_token \
   -e API_BASE_URL=https://router.huggingface.co/v1 \
@@ -190,16 +170,16 @@ docker run -p 7860:7860 \
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 hotel-robot-openenv/
 ├── env/
 │   ├── __init__.py       # Package marker
-│   ├── hotel_env.py      # Main environment class
+│   ├── hotel_env.py      # Main environment (battery + mood + rating)
 │   ├── tasks.py          # Task definitions (easy/medium/hard)
 │   └── grader.py         # Scoring logic (0.0 to 1.0)
-├── inference.py          # Agent — LLM + rule-based fallback
+├── inference.py          # Agent — LLM + smart rule-based fallback
 ├── server.py             # FastAPI server (HTTP API)
 ├── openenv.yaml          # OpenEnv configuration
 ├── Dockerfile            # Container setup
@@ -209,31 +189,16 @@ hotel-robot-openenv/
 
 ---
 
-## 📈 Baseline Scores
+## Environment Variables
 
-Scores achieved by the rule-based agent (no LLM required):
-
-| Task     | Score | Steps |
-|----------|-------|-------|
-| `easy`   |  1.00 |     4 |
-| `medium` |  1.00 |    44 |
-| `hard`   |  1.00 |    27 |
+| Variable       | Description         | Default                            |
+|----------------|---------------------|------------------------------------|
+| `HF_TOKEN`     | HuggingFace API key | required                           |
+| `API_BASE_URL` | LLM API endpoint    | https://router.huggingface.co/v1   |
+| `MODEL_NAME`   | Model for inference | Qwen/Qwen2.5-72B-Instruct          |
 
 ---
 
-## 🔧 Environment Variables
-
-| Variable       | Description            | Default                              |
-|----------------|------------------------|--------------------------------------|
-| `HF_TOKEN`     | HuggingFace API key    | required                             |
-| `API_BASE_URL` | LLM API endpoint       | `https://router.huggingface.co/v1`   |
-| `MODEL_NAME`   | Model for inference    | `Qwen/Qwen2.5-72B-Instruct`          |
-
----
-
-## 📜 License
+## License
 
 MIT
-
-
-

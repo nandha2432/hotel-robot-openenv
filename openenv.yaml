@@ -1,11 +1,9 @@
-# openenv.yaml
-# OpenEnv configuration file for Hotel Robot Delivery Environment
-
 name: hotel-robot-openenv
 version: "1.0.0"
 description: >
-  A reinforcement learning environment where a hotel delivery robot
-  navigates floors and rooms to complete delivery tasks efficiently.
+  A reinforcement learning environment where a hotel delivery robot navigates
+  floors and rooms to complete deliveries. Features guest rating system,
+  battery management, and an angry guest that cancels orders if too slow.
 
 environment:
   entry_point: env.hotel_env:HotelEnv
@@ -16,13 +14,14 @@ environment:
     - prev_room
     - deliver
     - finish
+    - recharge
   observation:
     current_floor:
       type: int
-      description: Robot's current floor number
+      description: Robot current floor
     current_room:
       type: int
-      description: Robot's current room number
+      description: Robot current room number
     target_floor:
       type: int
       description: Target delivery floor
@@ -31,14 +30,26 @@ environment:
       description: Target delivery room
     delivered:
       type: bool
-      description: Whether the item has been delivered
+      description: Whether item has been delivered
+    guest_rating:
+      type: int
+      description: Star rating from guest 0-5 (set after delivery)
+    guest_mood:
+      type: str
+      description: Guest mood - happy/neutral/annoyed/angry/furious
+    battery:
+      type: int
+      description: Battery level 0-100
+    charging:
+      type: bool
+      description: Whether robot is at charging station
     steps:
       type: int
-      description: Number of steps taken so far
+      description: Steps taken so far
 
 tasks:
   - name: easy
-    description: Deliver item on the same floor to a nearby room
+    description: Same floor, nearby room. Battery sufficient, guest stays happy.
     entry_point: env.tasks:get_task
     args:
       task_name: easy
@@ -46,38 +57,40 @@ tasks:
     max_steps: 20
 
   - name: medium
-    description: Deliver item to a different floor and room
+    description: Different floor and room. Battery used but survives.
     entry_point: env.tasks:get_task
     args:
       task_name: medium
     grader: env.grader:grade
-    max_steps: 40
+    max_steps: 30
 
   - name: hard
-    description: Deliver item across many floors with a tight step limit
+    description: Starts at 80% battery. Must recharge or dies. Guest gets annoyed.
     entry_point: env.tasks:get_task
     args:
       task_name: hard
     grader: env.grader:grade
-    max_steps: 25
+    max_steps: 60
 
 agent:
   entry_point: inference:main
   inference_script: inference.py
 
 reward:
-  min: -2.0
-  max: 5.0
+  min: -10.0
+  max: 7.9
   description: >
-    Step penalty of -0.1 each move. Bonuses for reaching correct floor (+1.0),
-    correct room (+2.0), delivering (+3.0), and finishing (+5.0).
-    Penalty for wrong delivery (-2.0).
+    Step penalty -0.1. Floor bonus +1.0, room bonus +2.0 (scaled by mood).
+    Delivery +3.0 + rating bonus up to +2.0. Finish +5.0.
+    Battery death -5.0. Order cancelled -10.0. Wrong delivery -2.0.
 
 metadata:
-  author: hotel-robot-team
+  author: nandha2432
   tags:
     - navigation
     - delivery
     - robotics
     - real-world
+    - battery-management
+    - multi-constraint
   license: MIT
